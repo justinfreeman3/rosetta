@@ -4,7 +4,7 @@
 #Organization: Dowell Laboratory, University of Colorado at Boulder
 #Contact: justin.freeman@colorado.edu or robin.dowell@colorado.edu
 #
-#Version: 1.0, June 05 2013
+#Version: 1.1, June 06 2013
 
 #Imports
 from __future__ import division
@@ -56,9 +56,15 @@ def main(args):
 	print 'Creating a wig file from the processed data.' + '\n'	
 	wigFile = makeWigFile(args, intermediateFile)
 	
-	#Convert the wig file into a bed file
-	print 'Converting the wig file into a bed file.' + '\n'	
-	bedFile = convertWigToBed(args, wigFile)
+	#Convert the wig file into a bed file or bedgraph file, based on input
+	queryFileSuffix = args['queryFile']
+	queryFileSuffix = queryFileSuffix[-3]
+	if queryFileSuffix == 'bed':
+		print 'Converting the wig file into a bed file.' + '\n'	
+		bedFile = convertWigToBed(args, wigFile)
+	else:
+		print 'Converting the wig file into a bedgraph file.' + '\n'
+		bedgraphFile = convertWigToBedgraph(args, wigFile)
 
 	print '\n' + '--------------------------------------------' + '\n'
 	print 'Rosetta Translate is now complete!' + '\n'	
@@ -69,7 +75,10 @@ def processQueryData(args):
 	queryDictionary = {}
 	with open(args['queryFile']) as queryFile:
 		for line in queryFile:
-			(chromosome, position, value) = line.split()
+			lineValue = line.split()
+			chromosome = lineValue[0]
+			position = lineValue[1]
+			value = lineValue[2]
 			uniqueKey = chromosome + position
 			queryDictionary[uniqueKey] = value
 	intermediateFileName = args['outputFile'] + '.processQuery'
@@ -154,9 +163,60 @@ def convertWigToBed(args, wigFileName):
 	bedFile.close()
 	return bedFileName
 
+def convertWigToBedgraph(args, wigFileName):
+	bedgraphFileName = args['outputFile'] + '.bedgraph'
+	bedgraphFile = open(bedgraphFileName, 'w')
+	bedgraphFile.write('type=bedGraph' + '\n')	#Print bedgraph file header
+	with open(wigFileName) as wigFile:
+		for line in wigFile:
+			lineValue = line.split()
+			if len(lineValue) > 1:	#Establish new chromosome value
+				currentChromosome = lineValue[1]
+				currentChromosomeNumber = currentChromosome[6:]
+				currentChromosome = currentChromosomeNumber.rstrip()
+				regionStart = 0
+				currentValue = ''
+				currentPosition = 0
+				lastValue = ''
+			else:
+				if lastValue == '':
+					lastValue = lineValue[0]
+					currentValue = lineValue[0]
+				else:
+					pass				
+				if lastValue == lineValue[0]:	#Continue existing region
+					pass
+				else:	#Define new region
+					regionEnd = currentPosition
+					printBedgraphRegion(args, currentChromosome, regionStart, regionEnd, lastValue, bedgraphFile)
+					regionStart = currentPosition
+					currentValue = lineValue[0]
+			currentPosition += 1
+			lastValue = currentValue	
+	bedgraphFile.close()
+	return bedgraphFileName
+
+#type=bedGraph
+#chr1    0       4302    0
+#chr1    4302    4303    0.0539228095498952
+#chr1    4303    4304    0.0519969949231132
+
+
 def printRegion(chromosome, regionStart, regionEnd, bedFile, strand, color):
 	bedFile.write(chromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + '1\t0\t' + strand + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + color + '\n')
 
+def printBedgraphRegion(args, currentChromosome, regionStart, regionEnd, lastValue, bedgraphFile):
+	if args['strand'] == 'minus':	#Set value negative for minus strand regions
+		if lastValue <> '0':
+			if lastValue[0] ==c '-':
+				pass
+			else:			
+				lastValue = '-' + lastValue
+		else:
+			pass
+	else:
+		pass
+	bedgraphFile.write(currentChromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + str(lastValue) + '\n')
 
 if __name__ == '__main__':
     main(args) 
