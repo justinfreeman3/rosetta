@@ -14,6 +14,10 @@ import glob
 import string
 import argparse
 
+#-------------------------------------------------------------------------
+#This section contains all the command line argument information, passed to the program by the user 
+#and handled by the argparse module
+#-------------------------------------------------------------------------
 parser = argparse.ArgumentParser(description='This script is the second half of the Rosetta pipeline.')
 parser.add_argument('-g', '--masterGenomeFile', help='File containing cross-coordinate system genome data', required=True)
 parser.add_argument('-o', '--outputFile', help='Desired filename prefix for output data', required=False)
@@ -24,8 +28,14 @@ group.add_argument('-q', '--queryFile', help='File containing data from the quer
 group.add_argument('-r', '--refFile', help='File containing data from the reference genome (may not be used with -q')
 
 args=vars(parser.parse_args())
+#-------------------------------------------------------------------------
 
 def main(args):
+	#-------------------------------------------------------------------------
+	#This function models the workflow for the program. No processing is done here. Functions are 
+	#called as needed to provide processing and file output functionality
+	#-------------------------------------------------------------------------
+
 	print '\n\n' + '--------------------------------------------' + '\n'
 	print 'Rosetta Translate is now running...' + '\n'	
 	print '--------------------------------------------' + '\n'
@@ -69,12 +79,22 @@ def main(args):
 	print '\n' + '--------------------------------------------' + '\n'
 	print 'Rosetta Translate is now complete!' + '\n'	
 	print '--------------------------------------------' + '\n'
-
+#-------------------------------------------------------------------------
 
 def processQueryData(args):
-	queryDictionary = {}
+	#-------------------------------------------------------------------------
+	#This function ports data aligned to a query genome to the reference genome's 
+	#coordinate system. It does this by creating a dictionary, wherein each entry's key
+	#equals the concatenated string of 'chromosome' and 'position'. The value associated 
+	#with each key is the actual experimental data value for that position. After generating
+	#this dictionary, the program iterates through the rosetta file, searching for matches in 
+	#the dictionary. If a match is found, the experimental data value is written into the 
+	#rosetta file. If not, a value of '0' is written for that position.
+	#-------------------------------------------------------------------------
+		
+	queryDictionary = {}	#create dictionary
 	with open(args['queryFile']) as queryFile:
-		for line in queryFile:
+		for line in queryFile:	
 			lineValue = line.split()
 			chromosome = lineValue[0]
 			position = lineValue[1]
@@ -95,11 +115,13 @@ def processQueryData(args):
 				intermediateFile.write(line.rstrip() + '\t' + '0' + '\n')
 	intermediateFile.close()
 	return intermediateFileName
+#-------------------------------------------------------------------------
 
 def processReferenceData(args):
 	print 'This is currently a dummy function. No work done here.' + '\n'
 	intermediateFileName = 'test'
 	return intermediateFileName
+#-------------------------------------------------------------------------
 
 def makeWigFile(args, intermediateFile):
 	currentChromosome = ''
@@ -116,6 +138,7 @@ def makeWigFile(args, intermediateFile):
 				wigFile.write(str(positionValue) + '\n')
 	wigFile.close()
 	return wigFileName
+#-------------------------------------------------------------------------
 
 def convertWigToBed(args, wigFileName):
 	bedFileName = args['outputFile'] + '.bed'
@@ -162,6 +185,7 @@ def convertWigToBed(args, wigFileName):
 				regionLocation = 0
 	bedFile.close()
 	return bedFileName
+#-------------------------------------------------------------------------
 
 def convertWigToBedgraph(args, wigFileName):
 	bedgraphFileName = args['outputFile'] + '.bedgraph'
@@ -200,10 +224,11 @@ def convertWigToBedgraph(args, wigFileName):
 #chr1    0       4302    0
 #chr1    4302    4303    0.0539228095498952
 #chr1    4303    4304    0.0519969949231132
-
+#-------------------------------------------------------------------------
 
 def printRegion(chromosome, regionStart, regionEnd, bedFile, strand, color):
 	bedFile.write(chromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + '1\t0\t' + strand + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + color + '\n')
+#-------------------------------------------------------------------------
 
 def printBedgraphRegion(args, currentChromosome, regionStart, regionEnd, lastValue, bedgraphFile):
 	if args['strand'] == 'minus':	#Set value negative for minus strand regions
@@ -217,6 +242,7 @@ def printBedgraphRegion(args, currentChromosome, regionStart, regionEnd, lastVal
 	else:
 		pass
 	bedgraphFile.write(currentChromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + str(lastValue) + '\n')
+#-------------------------------------------------------------------------
 
 if __name__ == '__main__':
     main(args) 
