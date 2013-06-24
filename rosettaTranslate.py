@@ -4,7 +4,7 @@
 #Organization: Dowell Laboratory, University of Colorado at Boulder
 #Contact: justin.freeman@colorado.edu or robin.dowell@colorado.edu
 #
-#Version: 1.1, June 06 2013
+#Version: 1.2, June 11 2013
 
 #Imports
 from __future__ import division
@@ -13,6 +13,7 @@ import sys
 import glob
 import string
 import argparse
+import operator
 
 #-------------------------------------------------------------------------
 #This section contains all the command line argument information, passed to the program by the user 
@@ -68,8 +69,8 @@ def main(args):
 	
 	#Convert the wig file into a bed file or bedgraph file, based on input
 	queryFileSuffix = args['queryFile']
-	queryFileSuffix = queryFileSuffix[-3]
-	if queryFileSuffix == 'bed':
+	queryFileSuffix = queryFileSuffix[-3:]
+	if queryFileSuffix == 'txt':
 		print 'Converting the wig file into a bed file.' + '\n'	
 		bedFile = convertWigToBed(args, wigFile)
 	else:
@@ -99,7 +100,7 @@ def processQueryData(args):
 			chromosome = lineValue[0]
 			position = lineValue[1]
 			value = lineValue[2]
-			uniqueKey = chromosome + position
+			uniqueKey = chromosome + '_' + position
 			queryDictionary[uniqueKey] = value
 	intermediateFileName = args['outputFile'] + '.processQuery'
 	intermediateFile = open(intermediateFileName, 'w')
@@ -108,12 +109,15 @@ def processQueryData(args):
 			genomeLine = line.split()
 			qryChromosome = genomeLine[2]
 			qryPosition = genomeLine[3]
-			uniqueGenomeKey = qryChromosome + qryPosition
+			uniqueGenomeKey = qryChromosome + '_' + qryPosition
 			if uniqueGenomeKey in queryDictionary:
-				intermediateFile.write(line.rstrip() + '\t' + queryDictionary[uniqueGenomeKey] + '\n')
+				intermediateFile.write(line.rstrip() + '\t' + str(queryDictionary[uniqueGenomeKey]) + '\n')
+				foundRead = 'FOUND' + uniqueGenomeKey
+				queryDictionary[foundRead] = queryDictionary.pop(uniqueGenomeKey)			
 			else:
 				intermediateFile.write(line.rstrip() + '\t' + '0' + '\n')
 	intermediateFile.close()
+	handleDanglingReads(args, queryDictionary)
 	return intermediateFileName
 #-------------------------------------------------------------------------
 
@@ -121,6 +125,35 @@ def processReferenceData(args):
 	print 'This is currently a dummy function. No work done here.' + '\n'
 	intermediateFileName = 'test'
 	return intermediateFileName
+#-------------------------------------------------------------------------
+
+def handleDanglingReads(args, queryDictionary):
+	print 'Trying to find dangling reads.' +'\n'
+	numberOfDanglingReads = 0
+	danglingDictionary = {}	#Not used anywhere yet
+	summaryDictionary = {} 
+	danglingFileName = args['outputFile'] + '_unmapped'
+	danglingFile = open(danglingFileName, 'w')
+	with open(args['queryFile']) as queryFile:
+		for key in sorted(queryDictionary.iterkeys()):					
+			if key[0:5] <> 'FOUND':
+				spacer = key.find('_')
+				chromosome = key[0:spacer]
+				position = key[(spacer+1):]				
+				danglingFile.write(chromosome + '\t' + position + '\t' + str(queryDictionary[key]) + '\n')
+				numberOfDanglingReads += 1
+				danglingDictionary
+				if chromosome in summaryDictionary:
+					summaryDictionary[chromosome] += 1
+				else:
+					summaryDictionary[chromosome] = 1
+			else:
+				pass
+		print str(numberOfDanglingReads) + ' dangling reads found.' + '\n'
+		#print summaryDictionary
+	danglingFile.close()				
+	return
+
 #-------------------------------------------------------------------------
 
 def makeWigFile(args, intermediateFile):
@@ -132,7 +165,7 @@ def makeWigFile(args, intermediateFile):
 			dataLine = line.split()
 			if dataLine[0] <> currentChromosome:
 				currentChromosome = dataLine[0]
-				wigFile.write('fixedStep chrom=' + currentChromosome + ' start=1 step=1\n')
+				wigFile.write('fixedStep chrom=' + currentChromosome + ' start=1 step=1' +'\n')
 			else:
 				positionValue = dataLine[-1]
 				wigFile.write(str(positionValue) + '\n')
@@ -144,7 +177,7 @@ def convertWigToBed(args, wigFileName):
 	bedFileName = args['outputFile'] + '.bed'
 	bedFile = open(bedFileName, 'w')
 	with open(wigFileName) as wigFile:
-		regionLocation = 0
+		regionLocation = 1
 		inRegion = 0
 		regionStart = 0
 		regionEnd = 0
@@ -153,36 +186,41 @@ def convertWigToBed(args, wigFileName):
 			strand = '+'
 			color = '238,0,0'
 		else:
-			strand = 'minus'
+			strand = '-'
 			color = '0,0,175'
 		for line in wigFile:
-			lineValue = line.split()
-			if len(lineValue[0]) == 1:	#Determine if current line is a new chromosome header or not
-				if int(lineValue[0]) == 0:	#Not in a feature region
+			lineValue = line.split()			
+			if len(lineValue) == 1:	#Determine if current line is a new chromosome header or not
+				if float(lineValue[0]) == 0:	#Not in a feature region
 					if inRegion == 1:	#Need to end the current feature region, print the output, and reset the feature region flag
 						regionEnd = regionLocation
-						printRegion(currentChromosome, regionStart, regionEnd, bedFile, strand, color)
+						printRegion(currentChromosome, regionStart, regionEnd, bedFile, strand, color, regionValue)
 						inRegion = 0
 					else:	#Don't need to do anything, since we're already outside of a feature region
 						pass
-				elif int(lineValue[0]) == 1:	#In a feature region
+				elif float(lineValue[0]) <> 0:	#In a feature region
 					if inRegion == 0:	#Just now entering the feature region, need to set the feature region flag and the start location
-						regionStart = regionLocation
+						regionStart = regionLocation + 1
+						regionValue = lineValue[0]
 						inRegion = 1
-					else:	#Don't need to do anything, since we're just continuing with the same feature region
-						pass
+					else:	
+						if regionValue == lineValue[0]:		#Don't need to do anything, since we're just continuing with the same feature region
+							pass
+						else:
+							regionEnd = regionLocation
+							printRegion(currentChromosome, regionStart, regionEnd, bedFile, strand, color, regionValue)
+							inRegion = 0
 				regionLocation += 1		#Increment the location before moving to the next line of data in the wig file
 			else:	#For a new chromosome
 				if inRegion == 1:	#Need to wrap up and print the current feature region, since it clearly can't carry over to the next chromosome
 					regionEnd = regionLocation
-					printRegion(currentChromosome, regionStart, regionEnd, bedFile, strand, color)
+					printRegion(currentChromosome, regionStart, regionEnd, bedFile, strand, color, regionValue)
 					inRegion = 0
-				else:	#Establish new chromosome value
-					lineValue = line.split()
+				else:	#Establish new chromosome value					
 					currentChromosome = lineValue[1]
 					currentChromosomeNumber = currentChromosome[6:]
 					currentChromosome = currentChromosomeNumber.rstrip()
-				regionLocation = 0
+				regionLocation = 1
 	bedFile.close()
 	return bedFileName
 #-------------------------------------------------------------------------
@@ -226,14 +264,14 @@ def convertWigToBedgraph(args, wigFileName):
 #chr1    4303    4304    0.0519969949231132
 #-------------------------------------------------------------------------
 
-def printRegion(chromosome, regionStart, regionEnd, bedFile, strand, color):
-	bedFile.write(chromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + '1\t0\t' + strand + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + color + '\n')
+def printRegion(chromosome, regionStart, regionEnd, bedFile, strand, color, regionValue):
+	bedFile.write(chromosome + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + str(regionValue) + '\t' + '0' + '\t' + strand + '\t' + str(regionStart) + '\t' + str(regionEnd) + '\t' + color + '\n')
 #-------------------------------------------------------------------------
 
 def printBedgraphRegion(args, currentChromosome, regionStart, regionEnd, lastValue, bedgraphFile):
 	if args['strand'] == 'minus':	#Set value negative for minus strand regions
 		if lastValue <> '0':
-			if lastValue[0] ==c '-':
+			if lastValue[0] == '-':
 				pass
 			else:			
 				lastValue = '-' + lastValue
